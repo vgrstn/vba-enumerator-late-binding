@@ -1,4 +1,4 @@
-Attribute VB_Name = "EnumTest"
+Attribute VB_Name = "EnumTestLate"
 '@Folder("Module")
 '@ModuleDescription("Enumerator Test.")
 
@@ -30,8 +30,8 @@ Option Explicit
 
 Public Sub TestForEachLateBinding()
 
-    Dim EnumTest As EnumTestClass
-    Set EnumTest = New EnumTestClass
+    Dim EnumTest As CEnumTestLate
+    Set EnumTest = New CEnumTestLate
 
     EnumTest.count = 25
 
@@ -44,8 +44,8 @@ End Sub
 
 
 Private Sub TestForEachNestedLateBinding()
-    Dim EnumTest As EnumTestClass
-    Set EnumTest = New EnumTestClass
+    Dim EnumTest As CEnumTestLate
+    Set EnumTest = New CEnumTestLate
 
     EnumTest.count = 10
 
@@ -68,7 +68,7 @@ End Sub
 
 
 Private Sub TestTimerLateBinding()
-    Dim EnumTest As EnumTestClass
+    Dim EnumTest As CEnumTestLate
     Dim v As Variant
 
     Dim n As Long: n = 10000
@@ -77,7 +77,7 @@ Private Sub TestTimerLateBinding()
     Dim i As Long
     Dim Seconds As Double
 
-    Set EnumTest = New EnumTestClass
+    Set EnumTest = New CEnumTestLate
     EnumTest.count = n
 
     Stopwatch.Reset

@@ -28,10 +28,10 @@ Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) 
 | File | Type | Description |
 |---|---|---|
 | `EnumeratorLateBinding.bas` | Module | `Enumerate(iterable, callback, count [, base])` — the main entry point |
-| `EnumTestClassLateBinding.cls` | Example | Simple iterable class using late binding |
-| `EnumTestLateBinding.bas` | Example | `For Each` tests and performance timings |
+| `CEnumTestLate.cls` | Example | Simple iterable class using late binding |
+| `EnumTestLate.bas` | Example | `For Each` tests and performance timings |
 
-> **Note:** `EnumTest.bas` uses a `Stopwatch` module for timing measurements. Remove or replace those calls if you do not have it.
+> **Note:** `EnumTestLate.bas` uses a `Stopwatch` module for timing measurements. Remove or replace those calls if you do not have it.
 
 ---
 

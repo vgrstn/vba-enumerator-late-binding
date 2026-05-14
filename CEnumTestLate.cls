@@ -2,7 +2,7 @@ VERSION 1.0 CLASS
 BEGIN
   MultiUse = -1  'True
 END
-Attribute VB_Name = "EnumTestClass"
+Attribute VB_Name = "CEnumTestLate"
 Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
@@ -51,7 +51,7 @@ Private this As TENUMTEST
 '@Enumerator
 Public Function Enumerate() As IEnumVARIANT
 
-    Set Enumerate = Enumerator.Enumerate(Me, "Item", this.n, 1)
+    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, "Item", this.n, 1)
 
 End Function
 
