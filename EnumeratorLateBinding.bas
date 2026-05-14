@@ -49,7 +49,7 @@ Option Explicit
 '
 ' '@Enumerator
 ' Public Function Enumerate() As IEnumVARIANT
-'    Set Enumerate = Enumerator.Enumerate(Me, callback, count [, base])
+'    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, callback, count [, base])
 ' End Function
 '
 ' Timings (ms) for n = 10.000
