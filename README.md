@@ -4,9 +4,9 @@
 ![Architecture](https://img.shields.io/badge/Architecture-x86%20%7C%20x64-lightgrey)
 ![Rubberduck](https://img.shields.io/badge/Rubberduck-Ready-orange)
 
-VBA Standard Module that adds `For Each` support to any class using late binding and a synthetic `IEnumVARIANT` COM object — no typelib, no interface required.
+VBA standard module that adds `For Each` support to any class using late binding and a synthetic `IEnumVARIANT` COM object — no typelib, no interface required.
 
-Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) in a Standard Module using `AddressOf` and a heap-allocated vtable. Items are retrieved one by one via `CallByName`, so the iterable class does not need to implement any interface.
+Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) in a standard module using `AddressOf` and a heap-allocated vtable. Items are retrieved one by one via `CallByName`, so the iterable class does not need to implement any interface.
 
 ---
 
