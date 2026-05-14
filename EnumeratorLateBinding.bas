@@ -1,4 +1,4 @@
-Attribute VB_Name = "Enumerator"
+Attribute VB_Name = "EnumeratorLateBinding"
 '@IgnoreModule MultipleDeclarations, HungarianNotation, UseMeaningfulName, AssignedByValParameter, FunctionReturnValueDiscarded, UnassignedVariableUsage, VariableNotAssigned, IntegerDataType, UDTMemberNotUsed
 '@Folder("Module")
 '@ModuleDescription("Enumerator Module.")
@@ -124,6 +124,7 @@ Private Declare PtrSafe Function SysReAllocString Lib "oleaut32.dll" ( _
 ) As Long
 
 #If API Then
+
 ' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-variantcopy
 Private Declare PtrSafe Function VarCopyToPtr Lib "oleaut32.dll" Alias "VariantCopy" ( _
     ByVal pvDest As LongPtr, _
