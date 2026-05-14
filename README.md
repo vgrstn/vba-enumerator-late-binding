@@ -52,7 +52,7 @@ Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) 
 ```vb
 '@Enumerator
 Public Function Enumerate() As IEnumVARIANT
-    Set Enumerate = Enumerator.Enumerate(Me, "Item", this.Count, 1)
+    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, "Item", this.Count, 1)
 End Function
 ```
 
