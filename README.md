@@ -4,9 +4,9 @@
 ![Architecture](https://img.shields.io/badge/Architecture-x86%20%7C%20x64-lightgrey)
 ![Rubberduck](https://img.shields.io/badge/Rubberduck-Ready-orange)
 
-VBA standard module that adds `For Each` support to any class using late binding and a synthetic `IEnumVARIANT` COM object — no typelib, no interface required.
+VBA standard module that adds `For Each` support to any Class using late binding and a synthetic `IEnumVARIANT` COM object — no typelib, no interface required.
 
-Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) in a standard module using `AddressOf` and a heap-allocated vtable. Items are retrieved one by one via `CallByName`, so the iterable class does not need to implement any interface.
+Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) in a standard module using `AddressOf` and a heap-allocated vtable. Items are retrieved one by one via `CallByName`, so the iterable Class does not need to implement any interface.
 
 ---
 
@@ -28,7 +28,7 @@ Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) 
 | File | Type | Description |
 |---|---|---|
 | `EnumeratorLateBinding.bas` | Module | `Enumerate(iterable, callback, count [, base])` — the main entry point |
-| `CEnumTestLate.cls` | Example | Simple iterable class using late binding |
+| `CEnumTestLate.cls` | Example | Simple iterable Class using late binding |
 | `EnumTestLate.bas` | Example | `For Each` tests and performance timings |
 
 > **Note:** `EnumTestLate.bas` uses a `Stopwatch` module for timing measurements. Remove or replace those calls if you do not have it.
@@ -47,7 +47,7 @@ Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) 
 
 ## 🚀 Quick Start
 
-**1. Add the `Enumerate` function to your class:**
+**1. Add the `Enumerate` function to your Class:**
 
 ```vb
 '@Enumerator
@@ -104,7 +104,7 @@ VBA's `For Each` requires the iterable object to expose `IEnumVARIANT` via `_New
 3. Writes the vtable pointer into the first field of `TENUM` — making it a valid COM object
 4. Overwrites the return value of `Enumerate` with the heap pointer — returning the synthetic object as `IEnumVARIANT`
 5. Stores the callback name as a BSTR (`SysAllocString`) in the `TENUM` struct; freed on `Release` via `SysFreeString`
-6. Uses `CallByName` at each iteration to retrieve the item by index — no interface required on the iterable class
+6. Uses `CallByName` at each iteration to retrieve the item by index — no interface required on the iterable Class
 7. Keeps the iterable object alive via a `Static Collection` keyed by the heap address, compensating for reference count changes when the local `TENUM` goes out of scope
 
 Based on work by Dexter Freivald (32-bit, late binding) and ideas from *Hardcore Visual Basic 5.0* by Bruce McKinney.
