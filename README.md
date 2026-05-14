@@ -27,9 +27,9 @@ Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) 
 
 | File | Type | Description |
 |---|---|---|
-| `Enumerator.bas` | Module | `Enumerate(iterable, callback, count [, base])` — the main entry point |
-| `EnumTestClass.cls` | Example | Simple iterable class using late binding |
-| `EnumTest.bas` | Example | `For Each` tests and performance timings |
+| `EnumeratorLateBinding.bas` | Module | `Enumerate(iterable, callback, count [, base])` — the main entry point |
+| `EnumTestClassLateBinding.cls` | Example | Simple iterable class using late binding |
+| `EnumTestLateBinding.bas` | Example | `For Each` tests and performance timings |
 
 > **Note:** `EnumTest.bas` uses a `Stopwatch` module for timing measurements. Remove or replace those calls if you do not have it.
 
