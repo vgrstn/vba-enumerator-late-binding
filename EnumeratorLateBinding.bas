@@ -256,7 +256,10 @@ Public Function Enumerate( _
     End If
     CopyMemory ByVal MemoryBlock, obj, LenB(obj)
     CopyMemory ByVal VarPtr(Enumerate), MemoryBlock, vbSizeLongPtr
-    ' The obj goes out of scope decreasing the iterable object reference count.
+
+    ' When obj goes out of scope nref for iterable is decreased.
+    ' KeepAlive compensates by increasing the nref for iterable.
+    Set KeepAlive(MemoryBlock) = obj.caller
 
 End Function
 
@@ -304,8 +307,7 @@ Private Function IUnknown_Release(ByRef obj As TENUM) As Long
     IUnknown_Release = obj.nRef
 
     If obj.nRef = 0 Then
-        ' Do not decrease the iterable object reference count in obj because
-        ' this has been taken care of already when obj went out of scope.
+        Set KeepAlive(VarPtr(obj)) = Nothing
         SysFreeString obj.callback
         CoTaskMemFree VarPtr(obj)
     End If
@@ -415,6 +417,10 @@ Private Function IEnumVARIANT_Clone(ByRef obj As TENUM, ByVal ppEnum As LongPtr)
     CopyMemory ByVal ppEnum, MemoryBlock, vbSizeLongPtr
     IEnumVARIANT_Clone = S_OK
 
+    ' When Copy goes out of scope nref for iterable is decreased.
+    ' KeepAlive compensates by increasing the nref for iterable.
+    Set KeepAlive(MemoryBlock) = Copy.caller
+
 End Function
 
 
@@ -456,6 +462,33 @@ Private Function IsIID_IEnumVARIANT(ByRef id As GUID) As Boolean
         (id.Data4(7) = &H46)
 
 End Function
+
+
+'@Description "Keep alive the iterable object stored in heap memory."
+Private Property Set KeepAlive(ByVal block As LongPtr, ByVal RHS As Object)
+' Increase or decrease reference count for the iterable object.
+
+    Static Table As Collection
+    If Table Is Nothing Then Set Table = New Collection
+
+    ' The key is the address of the allocated memory block.
+    Dim Key As String: Key = CStr(block)
+
+    If RHS Is Nothing Then
+        On Error Resume Next
+        ' Ignore if not found.
+        Table.Remove Key
+        On Error GoTo 0
+    Else
+        On Error Resume Next
+        ' Replace if present.
+        Table.Remove Key
+        Err.Clear
+        Table.Add RHS, Key
+        On Error GoTo 0
+    End If
+
+End Property
 
 
 #If API = False Then
