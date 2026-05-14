@@ -17,7 +17,7 @@ Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) 
 - **Nested loops** — works correctly for nested `For Each` with mixed objects and mixed enumerators
 - **Ascending iteration** — enumerates from `base` to `base + count - 1`
 - **Fast variant copy** — uses a Variant ByRef construct (5× faster than `VariantCopy` API); switch to API mode with `#Const API = True`
-- **Full COM lifecycle** — `QueryInterface`, `AddRef`, `Release`, `Clone` all correctly implemented
+- **Full COM lifecycle** — `QueryInterface`, `AddRef`, `Release`, `Clone` all correctly implemented; `KeepAlive` static collection keeps the iterable alive for the lifetime of the enumerator
 - x86 / x64 compatible via `LongPtr` and `#If Win64`
 - Pure VBA, zero dependencies, Rubberduck-friendly annotations
 
@@ -105,6 +105,7 @@ VBA's `For Each` requires the iterable object to expose `IEnumVARIANT` via `_New
 4. Overwrites the return value of `Enumerate` with the heap pointer — returning the synthetic object as `IEnumVARIANT`
 5. Stores the callback name as a BSTR (`SysAllocString`) in the `TENUM` struct; freed on `Release` via `SysFreeString`
 6. Uses `CallByName` at each iteration to retrieve the item by index — no interface required on the iterable class
+7. Keeps the iterable object alive via a `Static Collection` keyed by the heap address, compensating for reference count changes when the local `TENUM` goes out of scope
 
 Based on work by Dexter Freivald (32-bit, late binding) and ideas from *Hardcore Visual Basic 5.0* by Bruce McKinney.
 
