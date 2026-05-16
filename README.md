@@ -4,7 +4,7 @@
 ![Architecture](https://img.shields.io/badge/Architecture-x86%20%7C%20x64-lightgrey)
 ![Rubberduck](https://img.shields.io/badge/Rubberduck-Ready-orange)
 
-VBA standard module for IEnumVARIANT interface implementation — no typelib required, late binding using .
+VBA standard module for IEnumVARIANT interface implementation — no typelib required, late binding via CallByName.
 
 Implements the full `IEnumVARIANT` interface (`Next`, `Skip`, `Reset`, `Clone`) in a standard module using `AddressOf` and a heap-allocated vtable. Items are retrieved one by one via `CallByName`, so the iterable Class does not need to implement any interface.
 
