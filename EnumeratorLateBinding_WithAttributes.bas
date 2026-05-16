@@ -1,4 +1,5 @@
 Attribute VB_Name = "EnumeratorLateBinding"
+Attribute VB_Description = "Enumerator Module."
 
 '------------------------------------------------------------------------------
 ' MIT License
@@ -50,10 +51,12 @@ Option Explicit
 ' End Function
 '
 ' Timings (ms) for n = 10.000
-' Iterable object with IEnumerator interface (For Each)    18.86 (API 43 ms)
+' Iterable object with VBA.CallByName - late binding       19.58 (API 47.23 ms)
 ' VB Collection - VB enumerator (For Each)                  0.21
 ' VB Array - VB enumerator (For Each)                       0.14
 ' VB Array - VB loop (For)                                  0.08
+'
+' Iterable object with IEnumerator - early binding          2.89 (API 16.38 ms)
 '
 ' The original ideas for a custom enumerator using a typelib and redefining
 ' the IEnumVARIANT interface routines in a standard module originate from
@@ -121,7 +124,6 @@ Private Declare PtrSafe Function SysReAllocString Lib "oleaut32.dll" ( _
 ) As Long
 
 #If API Then
-
 ' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-variantcopy
 Private Declare PtrSafe Function VarCopyToPtr Lib "oleaut32.dll" Alias "VariantCopy" ( _
     ByVal pvDest As LongPtr, _
@@ -156,6 +158,8 @@ Private Enum HRESULT
     E_NOTIMPL = &H80004001              ' Not implemented
     E_NOINTERFACE = &H80004002          ' No such interface supported
     E_POINTER = &H80004003              ' Pointer that is not valid
+    E_ABORT = &H80004004                ' Operation aborted
+    E_FAIL = &H80004005                 ' Unspecified failure
     E_OUTOFMEMORY = &H8007000E          ' Failed to allocate necessary memory
     E_INVALIDARG = &H80070057           ' One of the arguments is not valid
 End Enum
@@ -230,7 +234,7 @@ Public Function Enumerate( _
     Dim obj As TENUM
     With obj
         .pvTable = VarPtr(vTable(0))
-        ' Test the use of late binding by retrieving the first Item.
+        ' Test the use of late binding by retrieving the first item.
         On Error Resume Next
         VBA.CallByName iterable, callback, VBA.VbGet, base
         If Err.Number = 0 Then
@@ -240,6 +244,7 @@ Public Function Enumerate( _
             .First = base
             .Last = base + count - 1
         Else
+            On Error GoTo 0
             Err.Raise vbErrorInvalidProcedureCall, , "Call back property is invalid"
         End If
         .nRef = 1
@@ -248,6 +253,7 @@ Public Function Enumerate( _
 
     Dim MemoryBlock As LongPtr: MemoryBlock = CoTaskMemAlloc(LenB(obj))
     If MemoryBlock = vbNullPtr Then
+        SysFreeString obj.callback
         Err.Raise vbErrorOutOfMemory
     End If
     CopyMemory ByVal MemoryBlock, obj, LenB(obj)
@@ -269,6 +275,7 @@ Private Function IUnknown_QueryInterface( _
     ByRef riid As GUID, _
     ByVal ppvObj As LongPtr _
 ) As Long
+Attribute IUnknown_QueryInterface.VB_Description = "Queries a COM object for a pointer to one of its interfaces."
 
     If ppvObj = vbNullPtr Then
         IUnknown_QueryInterface = E_POINTER
@@ -287,6 +294,7 @@ End Function
 
 
 Private Function IUnknown_AddRef(ByRef obj As TENUM) As Long
+Attribute IUnknown_AddRef.VB_Description = "Increments the reference count for an interface pointer to a COM object."
 
     obj.nRef = obj.nRef + 1
     IUnknown_AddRef = obj.nRef
@@ -295,6 +303,7 @@ End Function
 
 
 Private Function IUnknown_Release(ByRef obj As TENUM) As Long
+Attribute IUnknown_Release.VB_Description = "Decrements the reference count for an interface pointer to a COM object."
 
     obj.nRef = obj.nRef - 1
     IUnknown_Release = obj.nRef
@@ -314,6 +323,7 @@ Private Function IEnumVARIANT_Next( _
     ByVal rgVar As LongPtr, _
     ByVal pceltFetched As LongPtr _
 ) As Long
+Attribute IEnumVARIANT_Next.VB_Description = "Retrieves the next item in the enumeration sequence."
 
     If rgVar = vbNullPtr Then
         IEnumVARIANT_Next = E_INVALIDARG
@@ -366,20 +376,24 @@ End Function
 
 
 Private Function IEnumVARIANT_Skip(ByRef obj As TENUM, ByVal celt As Long) As Long
+Attribute IEnumVARIANT_Skip.VB_Description = "Skips over a number of elements in the enumeration sequence."
 
-    obj.Current = obj.Current + celt
-
-    If obj.Current <= obj.Last Then
+    Select Case True
+    Case celt = 0:  IEnumVARIANT_Skip = S_OK
+    Case celt < 0:  IEnumVARIANT_Skip = E_INVALIDARG
+    Case celt <= obj.Last - obj.Current + 1
+        obj.Current = obj.Current + celt
         IEnumVARIANT_Skip = S_OK
-    Else
-        obj.Current = obj.Last
+    Case Else
+        obj.Current = obj.Last + 1
         IEnumVARIANT_Skip = S_FALSE
-    End If
+    End Select
 
 End Function
 
 
 Private Function IEnumVARIANT_Reset(ByRef obj As TENUM) As Long
+Attribute IEnumVARIANT_Reset.VB_Description = "Resets the enumeration sequence to the beginning."
 
     obj.Current = obj.First
     IEnumVARIANT_Reset = S_OK
@@ -388,17 +402,21 @@ End Function
 
 
 Private Function IEnumVARIANT_Clone(ByRef obj As TENUM, ByVal ppEnum As LongPtr) As Long
+Attribute IEnumVARIANT_Clone.VB_Description = "Creates a copy of the current state of enumeration."
 
     If ppEnum = vbNullPtr Then
         IEnumVARIANT_Clone = E_INVALIDARG
         Exit Function
     End If
 
+    ' UDT assignment AddRefs caller — callback is LongPtr, needs explicit SysAllocString
     Dim Copy As TENUM: Copy = obj
+    Copy.callback = SysAllocString(obj.callback)
     Copy.nRef = 1
 
     Dim MemoryBlock As LongPtr: MemoryBlock = CoTaskMemAlloc(LenB(obj))
     If MemoryBlock = vbNullPtr Then
+        SysFreeString Copy.callback
         IEnumVARIANT_Clone = E_OUTOFMEMORY
         Exit Function
     End If
@@ -414,6 +432,7 @@ End Function
 
 
 Private Function IsIID_IUnknown(ByRef id As GUID) As Boolean
+Attribute IsIID_IUnknown.VB_Description = "Returns True if id is IID_IUnknown GUID."
 
 '    Const IID_IUnknown As String = "{00000000-0000-0000-C000-000000000046}"
     IsIID_IUnknown = _
@@ -433,6 +452,7 @@ End Function
 
 
 Private Function IsIID_IEnumVARIANT(ByRef id As GUID) As Boolean
+Attribute IsIID_IEnumVARIANT.VB_Description = "Returns True if id is IID_IEnumVARIANT GUID."
 
 '    Const IID_IEnumVARIANT As String = "{00020404-0000-0000-C000-000000000046}"
     IsIID_IEnumVARIANT = _
@@ -452,6 +472,7 @@ End Function
 
 
 Private Property Set KeepAlive(ByVal block As LongPtr, ByVal RHS As Object)
+Attribute KeepAlive.VB_Description = "Keep alive the iterable object stored in heap memory."
 ' Increase or decrease reference count for the iterable object.
 
     Static Table As Collection
@@ -479,6 +500,7 @@ End Property
 
 #If API = False Then
 Private Sub InitializeVarByRef()
+Attribute InitializeVarByRef.VB_Description = "Initializes the Variant ByRef construct."
 
     VarByRef.vt = VarPtr(VarByRef.ref)
     CopyMemory VarByRef.vt, VBA.vbInteger Or VT_BYREF, vbSizeInteger
@@ -494,6 +516,7 @@ Private Sub CopyVarByRef( _
     ByRef vt As Variant, _
     ByRef ref As Variant _
 )
+Attribute CopyVarByRef.VB_Description = "Copies a Variant to a memory address using the Variant ByRef construct."
 
     VarByRef.ref = address
     vt = VBA.vbVariant Or VT_BYREF
@@ -514,6 +537,7 @@ Private Sub CopyLngByRef( _
     ByRef vt As Variant, _
     ByRef ref As Variant _
 )
+Attribute CopyLngByRef.VB_Description = "Copies a Long to a memory address using the Variant ByRef construct."
 
     VarByRef.ref = address
     vt = VBA.vbLong Or VT_BYREF
@@ -528,6 +552,7 @@ Private Function PeekStr( _
     ByVal address As LongPtr, _
     ByRef vt As Variant _
 ) As String
+Attribute PeekStr.VB_Description = "Peeks an address for a String using the Variant ByRef construct."
 
     VarByRef.ref = VarPtr(address)
     vt = VBA.vbString Or VT_BYREF

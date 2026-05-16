@@ -53,10 +53,12 @@ Option Explicit
 ' End Function
 '
 ' Timings (ms) for n = 10.000
-' Iterable object with IEnumerator interface (For Each)    18.86 (API 43 ms)
+' Iterable object with VBA.CallByName - late binding       19.58 (API 47.23 ms)
 ' VB Collection - VB enumerator (For Each)                  0.21
 ' VB Array - VB enumerator (For Each)                       0.14
 ' VB Array - VB loop (For)                                  0.08
+'
+' Iterable object with IEnumerator - early binding          2.89 (API 16.38 ms)
 '
 ' The original ideas for a custom enumerator using a typelib and redefining
 ' the IEnumVARIANT interface routines in a standard module originate from
@@ -124,7 +126,6 @@ Private Declare PtrSafe Function SysReAllocString Lib "oleaut32.dll" ( _
 ) As Long
 
 #If API Then
-
 ' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-variantcopy
 Private Declare PtrSafe Function VarCopyToPtr Lib "oleaut32.dll" Alias "VariantCopy" ( _
     ByVal pvDest As LongPtr, _
@@ -159,6 +160,8 @@ Private Enum HRESULT
     E_NOTIMPL = &H80004001              ' Not implemented
     E_NOINTERFACE = &H80004002          ' No such interface supported
     E_POINTER = &H80004003              ' Pointer that is not valid
+    E_ABORT = &H80004004                ' Operation aborted
+    E_FAIL = &H80004005                 ' Unspecified failure
     E_OUTOFMEMORY = &H8007000E          ' Failed to allocate necessary memory
     E_INVALIDARG = &H80070057           ' One of the arguments is not valid
 End Enum
@@ -234,7 +237,7 @@ Public Function Enumerate( _
     Dim obj As TENUM
     With obj
         .pvTable = VarPtr(vTable(0))
-        ' Test the use of late binding by retrieving the first Item.
+        ' Test the use of late binding by retrieving the first item.
         On Error Resume Next
         VBA.CallByName iterable, callback, VBA.VbGet, base
         If Err.Number = 0 Then
@@ -244,6 +247,7 @@ Public Function Enumerate( _
             .First = base
             .Last = base + count - 1
         Else
+            On Error GoTo 0
             Err.Raise vbErrorInvalidProcedureCall, , "Call back property is invalid"
         End If
         .nRef = 1
@@ -252,6 +256,7 @@ Public Function Enumerate( _
 
     Dim MemoryBlock As LongPtr: MemoryBlock = CoTaskMemAlloc(LenB(obj))
     If MemoryBlock = vbNullPtr Then
+        SysFreeString obj.callback
         Err.Raise vbErrorOutOfMemory
     End If
     CopyMemory ByVal MemoryBlock, obj, LenB(obj)
@@ -376,14 +381,16 @@ End Function
 '@Description "Skips over a number of elements in the enumeration sequence."
 Private Function IEnumVARIANT_Skip(ByRef obj As TENUM, ByVal celt As Long) As Long
 
-    obj.Current = obj.Current + celt
-
-    If obj.Current <= obj.Last Then
+    Select Case True
+    Case celt = 0:  IEnumVARIANT_Skip = S_OK
+    Case celt < 0:  IEnumVARIANT_Skip = E_INVALIDARG
+    Case celt <= obj.Last - obj.Current + 1
+        obj.Current = obj.Current + celt
         IEnumVARIANT_Skip = S_OK
-    Else
-        obj.Current = obj.Last
+    Case Else
+        obj.Current = obj.Last + 1
         IEnumVARIANT_Skip = S_FALSE
-    End If
+    End Select
 
 End Function
 
@@ -405,11 +412,14 @@ Private Function IEnumVARIANT_Clone(ByRef obj As TENUM, ByVal ppEnum As LongPtr)
         Exit Function
     End If
 
+    ' UDT assignment AddRefs caller — callback is LongPtr, needs explicit SysAllocString
     Dim Copy As TENUM: Copy = obj
+    Copy.callback = SysAllocString(obj.callback)
     Copy.nRef = 1
 
     Dim MemoryBlock As LongPtr: MemoryBlock = CoTaskMemAlloc(LenB(obj))
     If MemoryBlock = vbNullPtr Then
+        SysFreeString Copy.callback
         IEnumVARIANT_Clone = E_OUTOFMEMORY
         Exit Function
     End If
