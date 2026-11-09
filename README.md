@@ -221,12 +221,18 @@ End Type
 Private VarByRef As CONSTRUCT
 ```
 
-`InitializeVarByRef` sets `vt` to `VT_INTEGER | VT_BYREF` pointing at `ref`. `CopyVarByRef` writes a Variant to any address without an API call, `CopyLngByRef` a `Long` (for `pceltFetched`), and `CopyPtrByRef` a pointer. On x64 a `LongLong` by reference is not supported (error 458), so `CopyPtrByRef` writes the 8 bytes as a `Currency`, whose internal value is the Currency value times 10,000:
+`InitializeVarByRef` sets `vt` to `VT_INTEGER | VT_BYREF` pointing at `ref`. `CopyVarByRef` writes a Variant to any address without an API call, `CopyLngByRef` a `Long` (for `pceltFetched`), and `CopyPtrByRef` a pointer. On x64 a `LongLong` by reference is not supported (error 458), so `CopyPtrByRef` copies the 8 bytes as a `Currency`:
 
 ```vb
+VarByRef.ref = value            ' the pointer as a LongLong
+vt = VBA.vbCurrency             ' the same 8 bytes, now read as a Currency
+Dim Bits As Currency: Bits = ref
+VarByRef.ref = address
 vt = VBA.vbCurrency Or VT_BYREF
-ref = CCur(value) * 0.0001@
+ref = Bits                      ' the 8 bytes written as they are
 ```
+
+Only the type is changed, so the bits are copied and nothing is calculated. (An earlier version wrote `CCur(value) * 0.0001@`; that is exact for every user-mode address, but silently wrong above 922,337,203,685,477.)
 
 ### `IEnumVARIANT_Skip` — `Select Case True`
 
