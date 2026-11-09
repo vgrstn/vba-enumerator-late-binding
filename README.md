@@ -259,6 +259,10 @@ End Select
 
 ## 📝 Changes
 
+**2026-11-09**
+- Fixed: `CopyPtrByRef` copies the 8 bytes of a pointer as a `Currency` by changing the Variant type only. The previous `CCur(value) * 0.0001@` was exact for every user-mode address, but silently wrong above 922,337,203,685,477.
+- Module header rewritten: what the module does and needs at the top, the performance notes in one paragraph, a corrected note on the alternatives.
+
 **2026-11-08**
 - **Breaking:** `Enumerate(iterable, callback, count [, base])` became `Enumerate(iterable, count [, base])`; the items come from the default member (see above).
 - Fixed: errors raised in the callback or in the body of a `For Each` were lost one level up (`Err.Number = 0`); the `KeepAlive` Collection is gone.
@@ -271,4 +275,4 @@ End Select
 
 ## 📄 License
 
-MIT © 2025 Vincent van Geerestein
+MIT © 2025-2026 Vincent van Geerestein

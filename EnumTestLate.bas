@@ -1,4 +1,5 @@
 Attribute VB_Name = "EnumTestLate"
+'@IgnoreModule VariableNotUsed, ProcedureNotUsed, MultipleDeclarations, UseMeaningfulName
 '@Folder("Module")
 '@ModuleDescription("Enumerator Test.")
 
@@ -131,8 +132,10 @@ Private Sub TestTimerLateBinding()
     ' Timings include how long it takes to obtain EnumTest.Items
     Stopwatch.Reset
     Stopwatch.Start
+    '@Ignore EmptyForEachBlock
     For Each v In EnumTest.Items
-    ' Don't do anything, just measure the loop.
+        ' Do as little as possible, just measure the loop.
+        v = 0
     Next
     Seconds = Stopwatch.Halt
     Debug.Print "Items         ", Format$(1000 * Seconds, "Standard") & " ms"
