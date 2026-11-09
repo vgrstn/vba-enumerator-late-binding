@@ -35,43 +35,100 @@ Option Explicit
 ' E-mail: vincent@vangeerestein.com
 ' Description: Enumerator Module using Late Binding
 ' Add-in: RubberDuck (https://rubberduckvba.com/)
-' Version: 2025.09.10
+' Version: 2026.11.08
 '
 ' Methods
-' Enumerate(iterable, callback, count [, base])  Sets IEnumVARIANT interface to an iterable object
+' Enumerate(iterable, count [, base])   Sets IEnumVARIANT interface to an
+'                                       iterable object
+'
+' The items are the values of the default member of the iterable object, for
+' the indices base To base + count - 1, called by late binding: iterable(index).
+' Any object with an indexed default member can be enumerated, also an object
+' that can't implement an interface.
 '
 ' Enumerator works correctly for nested loops with mixed objects as well as for
-' nested loops with mixed enumerators.
+' nested loops with mixed enumerators. An error raised in the default member or
+' in the body of the loop reaches the caller as usual. An object without a
+' default member raises error 451 at the first item, and an empty object
+' (count = 0) never calls it. The iterable object stays alive until the
+' enumeration ends.
 '
 ' Code to be included in the iterable object:
 '
+' '@DefaultMember
+' Public Property Get Item(ByVal index As Long) As Variant
+'    (return the item at index, with Set for an object)
+' End Property
+'
 ' '@Enumerator
 ' Public Function Enumerate() As IEnumVARIANT
-'    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, callback, count [, base])
+'    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, count [, base])
 ' End Function
 '
-' Timings (ms) for n = 10.000
-' Iterable object with VBA.CallByName - late binding       19.58 (API 47.23 ms)
-' VB Collection - VB enumerator (For Each)                  0.21
-' VB Array - VB enumerator (For Each)                       0.14
-' VB Array - VB loop (For)                                  0.08
+' Why the default member and not a callback name with CallByName (until
+' version 2026.11.08 the callback name was the second argument of Enumerate):
+' - Speed. CallByName looks the name up with IDispatch::GetIDsOfNames for every
+'   item, then calls IDispatch::Invoke; the default member is called with
+'   Invoke at DISPID_VALUE right away. Per call 0.67 µs for iterable(index)
+'   against 1.36 µs for CallByName (and 1.24 µs for iterable.Item(index)).
+' - Simplicity. The callback name had to be kept in the IEnumVARIANT object as
+'   a String for the whole enumeration. That brought three bugs: a cache of the
+'   name in IEnumVARIANT_Next compared BSTR addresses, so a new name at the
+'   address of a released one gave the items of the old callback; a UDT with a
+'   String is converted to ANSI when it is passed to a Declare, so CopyMemory
+'   copied a temporary string; and the String had to be copied by Clone and
+'   freed by Release. Without the name the object holds only pointers and Longs.
+' - Resolving the DISPID once and calling Invoke with the DispCallFunc API was
+'   tried as well (EnumerateDispatch, retired): every item then takes a Declare
+'   call of about 1.4 µs, which makes it slower than CallByName.
+' A class without an indexed default member can get one, or can implement the
+' IEnumerator interface and use the faster Enumerator module.
 '
-' Iterable object with IEnumerator - early binding          2.89 (API 16.38 ms)
+' Timings (ms) for n = 10.000, see BenchmarkEnumerator
+' Iterable object with default member - late binding        9.40 (API 22.54 ms)
+' Iterable object - iterable(index), late binding (For)     6.71
+' Iterable object - CallByName(Item, index) (For)          14.46
+' Iterable object - Item(index), early binding (For)        0.85
+' Iterable object - Items array (For Each)                  0.31
+' VB Collection - VB enumerator (For Each)                  0.25
+' VB Array - VB enumerator (For Each)                       0.12
+' VB Array - VB loop (For)                                  0.09
+'
+' Iterable object with IEnumerator - early binding          3.01 (API 16.04 ms)
+'
+' Most of the time goes to the late-bound call of the default member. With the
+' IEnumerator interface (Enumerator module) the enumeration is about 3 times
+' faster.
+'
+' Starting a For Each takes about 4 µs (API 8 µs), against 0.2 µs for a VB
+' Collection. The memory blocks of the IEnumVARIANT objects are reused through
+' a stack, so a new block is only allocated when more enumerations are active
+' at the same time than ever before. The blocks are never freed.
+'
+' The unit tests are in TestEnumLateBinding and the timings in
+' BenchmarkEnumerator.
 '
 ' The original ideas for a custom enumerator using a typelib and redefining
 ' the IEnumVARIANT interface routines in a standard module originate from
 ' Hardcore Visual Basic 5.0 by Bruce McKinney.
 '
 ' The implementation without using a typelib is based on work by Dexter
-' Freivald who's original code was for 32 bits and was using late binding.
+' Freivald whose original code was for 32 bits and was using late binding.
 ' https://www.vbforums.com/showthread.php?854963-VB6-IEnumVARIANT-For-Each-support-without-a-typelib
 '
 ' An alternative method is to define an enumeration procedure in the iterable
 ' object by copying its items to an embedded VB Collection and subsequently
 ' exposing the IEnumVARIANT interface of this VB Collection. Another alternative
 ' is to let the object export the items to an array. The latter is what is used
-' by the VB Dictionary. Both of these alternative these methods export the items
+' by the VB Dictionary. Both of these alternative methods export the items
 ' "at once" whereas the Enumerate exports the enumerated items "one by one".
+'
+' APIs are best avoided in the hot zone for raw performance: every Declare call
+' takes about 1.4 µs. The memory blocks are therefore reused instead of
+' allocated and freed for every enumeration (CoTaskMemAlloc and CoTaskMemFree
+' together take about 6 µs), and pointers are written with the Variant ByRef
+' construct. On 64 bits a LongLong can't be written by reference (error 458),
+' so a pointer is written as a Currency with the same 8 bytes.
 
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 ' Compiler Directives
@@ -81,8 +138,9 @@ Option Explicit
 ' scales with the number of items enumerated. IEnumVARIANT_Next needs to copy a
 ' variant to a memory address. Depending on the API compiler directive it uses
 ' the VarCopyToPtr API or the 5x faster CopyVarByRef Variant ByRef method.
-' The late binding approach uses CallByName for calling the Me.Callback(index)
-' Property. If needed VBA.VbGet can be changed to VBA.VbMethod.
+' The same directive chooses CopyMemory or the Variant ByRef construct for
+' writing pointers. The late binding approach calls the default member of the
+' iterable object: iterable(index).
 
 #Const API = False
 
@@ -101,27 +159,6 @@ Private Declare PtrSafe Sub CopyMemory Lib "kernel32.dll" Alias "RtlMoveMemory" 
 Private Declare PtrSafe Function CoTaskMemAlloc Lib "ole32.dll" ( _
     ByVal cb As Long _
 ) As LongPtr
-
-' https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cotaskmemfree
-Private Declare PtrSafe Sub CoTaskMemFree Lib "ole32.dll" ( _
-    ByVal pv As LongPtr _
-)
-
-' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysallocstring
-Public Declare PtrSafe Function SysAllocString Lib "oleaut32.dll" ( _
-    Optional ByVal psz As LongPtr _
-) As LongPtr
-
-' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysfreestring
-Public Declare PtrSafe Sub SysFreeString Lib "oleaut32.dll" ( _
-    Optional ByVal pBSTR As LongPtr _
-)
-
-' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysreallocstring
-Private Declare PtrSafe Function SysReAllocString Lib "oleaut32.dll" ( _
-    ByVal pBSTR As LongPtr, _
-    Optional ByVal pszStrPtr As LongPtr _
-) As Long
 
 #If API Then
 ' https://docs.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-variantcopy
@@ -158,8 +195,6 @@ Private Enum HRESULT
     E_NOTIMPL = &H80004001              ' Not implemented
     E_NOINTERFACE = &H80004002          ' No such interface supported
     E_POINTER = &H80004003              ' Pointer that is not valid
-    E_ABORT = &H80004004                ' Operation aborted
-    E_FAIL = &H80004005                 ' Unspecified failure
     E_OUTOFMEMORY = &H8007000E          ' Failed to allocate necessary memory
     E_INVALIDARG = &H80070057           ' One of the arguments is not valid
 End Enum
@@ -183,12 +218,16 @@ End Type
 Private Type TENUM
     pvTable As LongPtr
     caller As Object
-    callback As LongPtr
     nRef As Long
     First As Long
     Last As Long
     Current As Long
 End Type
+
+' The memory blocks of released IEnumVARIANT objects are kept for reuse in a
+' stack (top at position 1): Enumerate and Clone take a block from the stack and
+' only allocate a new one when it is empty, IUnknown_Release puts it back.
+Private FreeBlocks As Collection
 
 #If API = False Then
 ' Variant ByRef construct for memory access by address.
@@ -207,7 +246,6 @@ Private VarByRef As CONSTRUCT
 
 Public Function Enumerate( _
     ByVal iterable As Object, _
-    ByVal callback As String, _
     ByVal count As Long, _
     Optional ByVal base As Long = 1 _
 ) As IEnumVARIANT
@@ -228,40 +266,33 @@ Public Function Enumerate( _
         ' Initialize the Variant ByRef construct.
         InitializeVarByRef
 #End If
+        Set FreeBlocks = New Collection
     End If
 
     ' Construct the synthetic IEnumVARIANT object.
     Dim obj As TENUM
     With obj
         .pvTable = VarPtr(vTable(0))
-        ' Test the use of late binding by retrieving the first item.
-        On Error Resume Next
-        VBA.CallByName iterable, callback, VBA.VbGet, base
-        If Err.Number = 0 Then
-            On Error GoTo 0
-            Set .caller = iterable
-            .callback = SysAllocString(StrPtr(callback))
-            .First = base
-            .Last = base + count - 1
-        Else
-            On Error GoTo 0
-            Err.Raise vbErrorInvalidProcedureCall, , "Call back property is invalid"
-        End If
+        Set .caller = iterable
+        .First = base
+        .Last = base + count - 1
         .nRef = 1
         .Current = .First
     End With
 
-    Dim MemoryBlock As LongPtr: MemoryBlock = CoTaskMemAlloc(LenB(obj))
-    If MemoryBlock = vbNullPtr Then
-        SysFreeString obj.callback
-        Err.Raise vbErrorOutOfMemory
-    End If
+    Dim MemoryBlock As LongPtr: MemoryBlock = TakeBlock(LenB(obj))
+    If MemoryBlock = vbNullPtr Then Err.Raise vbErrorOutOfMemory
     CopyMemory ByVal MemoryBlock, obj, LenB(obj)
-    CopyMemory ByVal VarPtr(Enumerate), MemoryBlock, vbSizeLongPtr
 
-    ' When obj goes out of scope nref for iterable is decreased.
-    ' KeepAlive compensates by increasing the nref for iterable.
-    Set KeepAlive(MemoryBlock) = obj.caller
+    ' The memory block now holds the reference to the iterable object: clear it
+    ' in obj without a release, IUnknown_Release releases it.
+#If API Then
+    CopyMemory ByVal VarPtr(Enumerate), MemoryBlock, vbSizeLongPtr
+    CopyMemory ByVal VarPtr(obj.caller), vbNullPtr, vbSizeLongPtr
+#Else
+    CopyPtrByRef VarPtr(Enumerate), MemoryBlock, VarByRef.vt, VarByRef.ref
+    CopyPtrByRef VarPtr(obj.caller), vbNullPtr, VarByRef.vt, VarByRef.ref
+#End If
 
 End Function
 
@@ -283,7 +314,11 @@ Attribute IUnknown_QueryInterface.VB_Description = "Queries a COM object for a p
     End If
 
     If IsIID_IUnknown(riid) Or IsIID_IEnumVARIANT(riid) Then
+#If API Then
         CopyMemory ByVal ppvObj, VarPtr(obj), vbSizeLongPtr
+#Else
+        CopyPtrByRef ppvObj, VarPtr(obj), VarByRef.vt, VarByRef.ref
+#End If
         IUnknown_AddRef obj
         IUnknown_QueryInterface = S_OK
     Else
@@ -309,9 +344,13 @@ Attribute IUnknown_Release.VB_Description = "Decrements the reference count for 
     IUnknown_Release = obj.nRef
 
     If obj.nRef = 0 Then
-        Set KeepAlive(VarPtr(obj)) = Nothing
-        SysFreeString obj.callback
-        CoTaskMemFree VarPtr(obj)
+        Set obj.caller = Nothing
+        ' Put the memory block on the stack for reuse.
+        If FreeBlocks.count = 0 Then
+            FreeBlocks.Add VarPtr(obj)
+        Else
+            FreeBlocks.Add VarPtr(obj), Before:=1
+        End If
     End If
 
 End Function
@@ -339,15 +378,23 @@ Attribute IEnumVARIANT_Next.VB_Description = "Retrieves the next item in the enu
 #End If
     End If
 
+    ' Only continue with loop for celt > 0.
+    If celt <= 0 Then
+        If celt < 0 Then
+            IEnumVARIANT_Next = E_INVALIDARG
+        Else
+            IEnumVARIANT_Next = S_OK
+        End If
+        Exit Function
+    End If
+
     ' Get the next item(s) from the iterable object.
-    Dim i As Long, NumberFetched As Long, ProcName As String
+    Dim i As Long, NumberFetched As Long
     For i = obj.Current To obj.Last
 #If API Then
-        SysReAllocString VarPtr(ProcName), obj.callback
-        If VarCopyToPtr(rgVar, VBA.CallByName(obj.caller, ProcName, VBA.VbGet, i)) <> S_OK Then Err.Raise Err.LastDllError
+        If VarCopyToPtr(rgVar, obj.caller(i)) <> S_OK Then Err.Raise Err.LastDllError
 #Else
-        ProcName = PeekStr(obj.callback, VarByRef.vt)
-        CopyVarByRef rgVar, VBA.CallByName(obj.caller, ProcName, VBA.VbGet, i), VarByRef.vt, VarByRef.ref
+        CopyVarByRef rgVar, obj.caller(i), VarByRef.vt, VarByRef.ref
 #End If
         NumberFetched = NumberFetched + 1
         If NumberFetched = celt Then Exit For
@@ -379,12 +426,15 @@ Private Function IEnumVARIANT_Skip(ByRef obj As TENUM, ByVal celt As Long) As Lo
 Attribute IEnumVARIANT_Skip.VB_Description = "Skips over a number of elements in the enumeration sequence."
 
     Select Case True
-    Case celt = 0:  IEnumVARIANT_Skip = S_OK
-    Case celt < 0:  IEnumVARIANT_Skip = E_INVALIDARG
+    Case celt = 0
+        IEnumVARIANT_Skip = S_OK
+    Case celt < 0
+        IEnumVARIANT_Skip = E_INVALIDARG
     Case celt <= obj.Last - obj.Current + 1
         obj.Current = obj.Current + celt
         IEnumVARIANT_Skip = S_OK
     Case Else
+        ' For overshoot set one-past-end.
         obj.Current = obj.Last + 1
         IEnumVARIANT_Skip = S_FALSE
     End Select
@@ -409,24 +459,40 @@ Attribute IEnumVARIANT_Clone.VB_Description = "Creates a copy of the current sta
         Exit Function
     End If
 
-    ' UDT assignment AddRefs caller â€” callback is LongPtr, needs explicit SysAllocString
+    ' UDT assignment AddRefs caller.
     Dim Copy As TENUM: Copy = obj
-    Copy.callback = SysAllocString(obj.callback)
     Copy.nRef = 1
 
-    Dim MemoryBlock As LongPtr: MemoryBlock = CoTaskMemAlloc(LenB(obj))
+    Dim MemoryBlock As LongPtr: MemoryBlock = TakeBlock(LenB(obj))
     If MemoryBlock = vbNullPtr Then
-        SysFreeString Copy.callback
         IEnumVARIANT_Clone = E_OUTOFMEMORY
         Exit Function
     End If
     CopyMemory ByVal MemoryBlock, Copy, LenB(obj)
-    CopyMemory ByVal ppEnum, MemoryBlock, vbSizeLongPtr
     IEnumVARIANT_Clone = S_OK
 
-    ' When Copy goes out of scope nref for iterable is decreased.
-    ' KeepAlive compensates by increasing the nref for iterable.
-    Set KeepAlive(MemoryBlock) = Copy.caller
+    ' The memory block now holds the reference to the iterable object: clear it
+    ' in Copy without a release, IUnknown_Release releases it.
+#If API Then
+    CopyMemory ByVal ppEnum, MemoryBlock, vbSizeLongPtr
+    CopyMemory ByVal VarPtr(Copy.caller), vbNullPtr, vbSizeLongPtr
+#Else
+    CopyPtrByRef ppEnum, MemoryBlock, VarByRef.vt, VarByRef.ref
+    CopyPtrByRef VarPtr(Copy.caller), vbNullPtr, VarByRef.vt, VarByRef.ref
+#End If
+
+End Function
+
+
+Private Function TakeBlock(ByVal NBytes As Long) As LongPtr
+Attribute TakeBlock.VB_Description = "Returns a free memory block from the stack, or a new one if the stack is empty."
+
+    If FreeBlocks.count = 0 Then
+        TakeBlock = CoTaskMemAlloc(NBytes)
+    Else
+        TakeBlock = FreeBlocks.Item(1)
+        FreeBlocks.Remove 1
+    End If
 
 End Function
 
@@ -469,33 +535,6 @@ Attribute IsIID_IEnumVARIANT.VB_Description = "Returns True if id is IID_IEnumVA
         (id.Data4(7) = &H46)
 
 End Function
-
-
-Private Property Set KeepAlive(ByVal block As LongPtr, ByVal RHS As Object)
-Attribute KeepAlive.VB_Description = "Keep alive the iterable object stored in heap memory."
-' Increase or decrease reference count for the iterable object.
-
-    Static Table As Collection
-    If Table Is Nothing Then Set Table = New Collection
-
-    ' The key is the address of the allocated memory block.
-    Dim Key As String: Key = CStr(block)
-
-    If RHS Is Nothing Then
-        On Error Resume Next
-        ' Ignore if not found.
-        Table.Remove Key
-        On Error GoTo 0
-    Else
-        On Error Resume Next
-        ' Replace if present.
-        Table.Remove Key
-        Err.Clear
-        Table.Add RHS, Key
-        On Error GoTo 0
-    End If
-
-End Property
 
 
 #If API = False Then
@@ -548,15 +587,24 @@ End Sub
 
 
 #If API = False Then
-Private Function PeekStr( _
+Private Sub CopyPtrByRef( _
     ByVal address As LongPtr, _
-    ByRef vt As Variant _
-) As String
-Attribute PeekStr.VB_Description = "Peeks an address for a String using the Variant ByRef construct."
+    ByVal value As LongPtr, _
+    ByRef vt As Variant, _
+    ByRef ref As Variant _
+)
+Attribute CopyPtrByRef.VB_Description = "Copies a pointer to a memory address using the Variant ByRef construct."
 
-    VarByRef.ref = VarPtr(address)
-    vt = VBA.vbString Or VT_BYREF
-    PeekStr = VarByRef.ref
+    VarByRef.ref = address
+#If Win64 Then
+    ' A LongLong by reference is not supported (error 458): write the 8 bytes
+    ' as a Currency, whose internal value is the Currency value times 10000.
+    vt = VBA.vbCurrency Or VT_BYREF
+    ref = CCur(value) * 0.0001@
+#Else
+    vt = VBA.vbLong Or VT_BYREF
+    ref = value
+#End If
 
-End Function
+End Sub
 #End If

@@ -42,14 +42,11 @@ Private Type TENUMTEST
 End Type
 Private this As TENUMTEST
 
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-' Interface methods
-''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 Public Function Enumerate() As IEnumVARIANT
 Attribute Enumerate.VB_UserMemId = -4
 
-    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, "Item", this.n, 1)
+    Set Enumerate = EnumeratorLateBinding.Enumerate(Me, this.n, 1)
 
 End Function
 
@@ -63,6 +60,10 @@ Public Property Get count() As Long
 End Property
 Public Property Let count(ByVal RHS As Long)
     this.n = RHS
+    If this.n = 0 Then
+        Erase this.a
+        Exit Property
+    End If
     ReDim this.a(1 To this.n)
     Dim i As Long
     For i = 1 To this.n
